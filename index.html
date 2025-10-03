@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Gerar Pix - Rifa</title>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin: 20px;
+      background: #f4f4f4;
+    }
+    .container {
+      background: #fff;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0px 4px 10px rgba(0,0,0,0.1);
+      display: inline-block;
+      max-width: 350px;
+      width: 100%;
+    }
+    .opcoes button {
+      margin: 5px;
+      padding: 10px 15px;
+      font-size: 16px;
+      border: none;
+      border-radius: 8px;
+      background: #007bff;
+      color: white;
+      cursor: pointer;
+    }
+    .opcoes button:hover {
+      background: #0056b3;
+    }
+    input, button {
+      font-size: 16px;
+      padding: 8px;
+      margin: 10px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      width: 80%;
+    }
+    #qrcode {
+      margin-top: 20px;
+    }
+    #pixCode {
+      margin-top: 15px;
+      font-size: 14px;
+      word-break: break-all;
+      background: #eee;
+      padding: 10px;
+      border-radius: 6px;
+    }
+    #copyButton {
+        background-color: #28a745;
+        color: white;
+        display: none;
+    }
+    #copyButton:hover {
+        background-color: #218838;
+    }
+    #outroValorDiv {
+      display: none;
+    }
+    #mensagem {
+      margin-top: 15px;
+      font-weight: bold;
+      color: green;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Pagamento da Rifa</h2>
+    <p>Escolha a quantidade de cotas:</p>
+
+    <div class="opcoes">
+      <button onclick="selecionarCotas(5)">5</button>
+      <button onclick="selecionarCotas(10)">10</button>
+      <button onclick="selecionarCotas(15)">15</button>
+      <button onclick="selecionarCotas(20)">20</button>
+      <button onclick="selecionarCotas(30)">30</button>
+      <button onclick="selecionarCotas(50)">50</button>
+      <button onclick="mostrarOutro()">Outro</button>
+    </div>
+
+    <div id="outroValorDiv">
+      <input type="number" id="outroValor" min="5" placeholder="Digite a quantidade (mín. 5)">
+    </div>
+
+    <br>
+    <button onclick="gerarPix()">Gerar Pix</button>
+    
+    <div id="qrcode"></div>
+    <div id="pixCode"></div>
+    
+    <button id="copyButton" onclick="copiarPix()">Copiar Código Pix</button>
+
+    <div id="mensagem"></div>
+  </div>
+
+  <script>
+    let cotasSelecionadas = null;
+
+    function selecionarCotas(valor) {
+      cotasSelecionadas = valor;
+      document.getElementById("outroValorDiv").style.display = "none";
+    }
+
+    function mostrarOutro() {
+      cotasSelecionadas = null;
+      document.getElementById("outroValorDiv").style.display = "block";
+    }
+
+    // --- LÓGICA DE GERAÇÃO DO PIX CORRIGIDA ---
+
+    const padStart = (value, length) => String(value).padStart(length, '0');
+
+    const formatarCampo = (id, valor) => {
+        const tamanho = padStart(valor.length, 2);
+        return `${id}${tamanho}${valor}`;
+    };
+    
+    function montarPayload(chave, valor, nome, cidade, txid) {
+        nome = nome.substring(0, 25);
+        cidade = cidade.substring(0, 15);
+
+        const valorFormatado = valor.toFixed(2);
+        
+        const campos = [
+            formatarCampo('00', '01'),
+            formatarCampo('26', 
+                formatarCampo('00', 'BR.GOV.BCB.PIX') +
+                formatarCampo('01', chave)
+            ),
+            formatarCampo('52', '0000'),
+            formatarCampo('53', '986'),
+            formatarCampo('54', valorFormatado),
+            formatarCampo('58', 'BR'),
+            formatarCampo('59', nome),
+            formatarCampo('60', cidade),
+            formatarCampo('62', formatarCampo('05', txid))
+        ];
+        
+        const payload = campos.join('');
+        const payloadComCRC = payload + '6304';
+        const crc = crc16(payloadComCRC);
+        
+        return payloadComCRC + crc;
+    }
+
+    function crc16(payload) {
+        let crc = 0xFFFF;
+        for (let i = 0; i < payload.length; i++) {
+            let c = payload.charCodeAt(i);
+            crc ^= (c << 8);
+            for (let j = 0; j < 8; j++) {
+                if ((crc & 0x8000) !== 0) {
+                    crc = (crc << 1) ^ 0x1021;
+                } else {
+                    crc = crc << 1;
+                }
+            }
+        }
+        return padStart((crc & 0xFFFF).toString(16).toUpperCase(), 4);
+    }
+
+    function gerarPix() {
+      const chave = "9cda7e89-2e9f-4dfa-bcc3-05cc0917fdef";
+      const nomeRecebedor = "Rifa Entre Amigos";
+      const cidadeRecebedor = "BRASILIA";      
+
+      let cotas = cotasSelecionadas;
+      if (!cotas) {
+        cotas = document.getElementById("outroValor").value;
+        if (!cotas || cotas < 5) {
+          alert("O valor mínimo é de 5 cotas (R$5,00).");
+          return;
+        }
+      }
+
+      const valor = parseFloat(cotas);
+      const txid = "***"; 
+      
+      const payload = montarPayload(chave, valor, nomeRecebedor, cidadeRecebedor, txid);
+
+      document.getElementById("pixCode").innerText = payload;
+      
+      const copyButton = document.getElementById("copyButton");
+      copyButton.style.display = "block";
+      copyButton.innerText = "Copiar Código Pix";
+
+      document.getElementById("qrcode").innerHTML = "";
+      QRCode.toCanvas(document.createElement("canvas"), payload, { width: 200 }, (err, canvas) => {
+        if (err) console.error(err);
+        if (!err) document.getElementById("qrcode").appendChild(canvas);
+      });
+
+      document.getElementById("mensagem").innerText = `Você escolheu ${cotas} cotas. Boa sorte na rifa!`;
+    }
+
+    function copiarPix() {
+        const textoPix = document.getElementById("pixCode").innerText;
+        if (!textoPix) return;
+        const textarea = document.createElement("textarea");
+        textarea.value = textoPix;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+
+        const copyButton = document.getElementById("copyButton");
+        copyButton.innerText = "Copiado!";
+        setTimeout(() => {
+            copyButton.innerText = "Copiar Código Pix";
+        }, 2000);
+    }
+  </script>
+</body>
+</html>
